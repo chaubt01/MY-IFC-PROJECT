@@ -1,73 +1,69 @@
-// proxy.js (hoạt động tốt trên Render)
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
+// proxy.js (dùng ES Modules)
+import express from 'express';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+import cors from 'cors';
 
+dotenv.config();
 const app = express();
+const PORT = process.env.PORT || 3000;
+const DROPBOX_TOKEN = process.env.DROPBOX_TOKEN;
+const DROPBOX_FOLDER = '/Apps/IFCEXPORT'; // thư mục gốc bạn lưu file .ifc
+
 app.use(cors());
 
-const DROPBOX_TOKEN = process.env.DROPBOX_TOKEN;
-const DROPBOX_API = "https://content.dropboxapi.com/2/files/download";
-
-// Tải file IFC mới nhất từ Dropbox
-app.get("/latest-ifc", async (req, res) => {
+app.get('/latest-ifc', async (req, res) => {
   try {
-    const result = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
-      method: "POST",
+    const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${DROPBOX_TOKEN}`,
-        "Content-Type": "application/json"
+        'Authorization': `Bearer ${DROPBOX_TOKEN}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        path: "/Apps/IFCEXPORT",
-        recursive: false
-      })
+        path: DROPBOX_FOLDER,
+        recursive: false,
+      }),
     });
 
-    const json = await result.json();
-    const latest = json.entries
-      .filter(e => e.name.endsWith(".ifc"))
-      .sort((a, b) => b.client_modified.localeCompare(a.client_modified))[0];
+    const data = await response.json();
+    const files = data.entries.filter(e => e.name.endsWith('.ifc'));
+    if (!files.length) return res.status(404).send('No IFC files found');
 
-    if (!latest) return res.status(404).send("Không tìm thấy file");
-
+    const latest = files.sort((a, b) => new Date(b.client_modified) - new Date(a.client_modified))[0];
     res.send(latest.name);
   } catch (err) {
     console.error(err);
-    res.status(500).send("Lỗi lấy danh sách file từ Dropbox");
+    res.status(500).send('Error fetching IFC list');
   }
 });
 
-// Tải nội dung file cụ thể
-app.get("/download-ifc", async (req, res) => {
+app.get('/download-ifc', async (req, res) => {
   const { file } = req.query;
-  if (!file) return res.status(400).send("Thiếu tên file");
+  if (!file) return res.status(400).send('Missing file');
 
   try {
-    const result = await fetch(DROPBOX_API, {
-      method: "POST",
+    const response = await fetch('https://content.dropboxapi.com/2/files/download', {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${DROPBOX_TOKEN}`,
-        "Dropbox-API-Arg": JSON.stringify({
-          path: `/Apps/${file}`
-        })
-      }
+        'Authorization': `Bearer ${DROPBOX_TOKEN}`,
+        'Dropbox-API-Arg': JSON.stringify({ path: `${DROPBOX_FOLDER}/${file}` }),
+      },
     });
 
-    if (!result.ok) {
-      const errText = await result.text();
-      console.error(errText);
-      return res.status(500).send("Lỗi tải file từ Dropbox");
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Dropbox Error:", errorText);
+      return res.status(500).send('Error downloading file from Dropbox');
     }
 
-    const data = await result.arrayBuffer();
-    res.setHeader("Content-Type", "application/octet-stream");
-    res.send(Buffer.from(data));
+    const buffer = await response.arrayBuffer();
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(Buffer.from(buffer));
   } catch (err) {
     console.error(err);
-    res.status(500).send("Lỗi server");
+    res.status(500).send('Internal server error');
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Proxy đang chạy tại cổng ${PORT}`));
+app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
