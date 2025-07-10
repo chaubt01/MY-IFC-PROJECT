@@ -1,17 +1,15 @@
 {
-  "name": "proxy",
+  "name": "ifc-proxy",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Proxy lấy file IFC từ Dropbox",
+  "main": "proxy.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node proxy.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "node-fetch": "^3.3.2"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.9"
   }
 }
