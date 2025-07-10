@@ -1,78 +1,68 @@
-import express from 'express';
-import cors from 'cors';
-import fetch from 'node-fetch';
-import dotenv from 'dotenv';
+// === proxy.js (Node.js - chạy trên Render) ===
 
-dotenv.config();
-
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+// Token truy cập Dropbox (lấy từ Dropbox App Console)
+const DROPBOX_TOKEN = 'YOUR_DROPBOX_TOKEN';
+const DROPBOX_FOLDER_PATH = '/ifc-files'; // Thư mục chứa file IFC trên Dropbox
+
 app.use(cors());
 
-const DROPBOX_API = 'https://api.dropboxapi.com/2';
-const DROPBOX_CONTENT = 'https://content.dropboxapi.com/2';
-const DROPBOX_TOKEN = process.env.DROPBOX_TOKEN;
-const DROPBOX_PATH = process.env.DROPBOX_PATH || '';
-
-function getAuthHeaders() {
-  return {
-    Authorization: `Bearer ${DROPBOX_TOKEN}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-// API: /latest-ifc → trả về tên file mới nhất
-app.get('/latest-ifc', async (req, res) => {
+// Trả danh sách file IFC
+app.get('/list-ifc', async (req, res) => {
   try {
-    const result = await fetch(`${DROPBOX_API}/files/list_folder`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ path: DROPBOX_PATH, recursive: false }),
-    });
+    const response = await axios.post(
+      'https://api.dropboxapi.com/2/files/list_folder',
+      { path: DROPBOX_FOLDER_PATH },
+      {
+        headers: {
+          Authorization: `Bearer ${DROPBOX_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
 
-    const json = await result.json();
-    if (!json.entries) throw new Error("Không có dữ liệu trả về");
+    const files = response.data.entries
+      .filter(entry => entry.name.endsWith('.ifc'))
+      .map(entry => entry.name);
 
-    const ifcFiles = json.entries
-      .filter(f => f.name.match(/^fileifc_\d{8}_\d{6}\.ifc$/i))
-      .sort((a, b) => b.name.localeCompare(a.name))
-      .reverse();
-
-    if (ifcFiles.length === 0) return res.status(404).send("Không tìm thấy file IFC");
-
-    res.send(ifcFiles[0].name);
+    res.json(files);
   } catch (err) {
-    console.error("❌ /latest-ifc:", err);
-    res.status(500).send("Lỗi khi lấy file mới nhất");
+    console.error("Lỗi lấy danh sách file:", err.response?.data || err.message);
+    res.status(500).send("Không thể lấy danh sách file");
   }
 });
 
-// API: /download-ifc?file=... → tải file IFC
+// Tải file IFC từ Dropbox theo tên
 app.get('/download-ifc', async (req, res) => {
+  const fileName = req.query.file;
+  if (!fileName) return res.status(400).send("Thiếu tên file");
+
   try {
-    const fileName = req.query.file;
-    if (!fileName) return res.status(400).send("Thiếu tên file");
+    const response = await axios.post(
+      'https://content.dropboxapi.com/2/files/download',
+      null,
+      {
+        headers: {
+          Authorization: `Bearer ${DROPBOX_TOKEN}`,
+          'Dropbox-API-Arg': JSON.stringify({ path: `${DROPBOX_FOLDER_PATH}/${fileName}` })
+        },
+        responseType: 'arraybuffer'
+      }
+    );
 
-    const path = `${DROPBOX_PATH}${fileName}`;
-    const response = await fetch(`${DROPBOX_CONTENT}/files/download`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${DROPBOX_TOKEN}`,
-        'Dropbox-API-Arg': JSON.stringify({ path }),
-      },
-    });
-
-    if (!response.ok) throw new Error("Không tải được file");
-
-    const buffer = await response.arrayBuffer();
-    res.set('Content-Type', 'application/octet-stream');
-    res.send(Buffer.from(buffer));
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(response.data);
   } catch (err) {
-    console.error("❌ /download-ifc:", err);
-    res.status(500).send("Lỗi khi tải file");
+    console.error("Lỗi tải file:", err.response?.data || err.message);
+    res.status(500).send("Không thể tải file IFC");
   }
 });
 
-const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🚀 Proxy server đang chạy tại http://localhost:${PORT}`);
+  console.log(`🚀 Proxy đang chạy tại http://localhost:${PORT}`);
 });
