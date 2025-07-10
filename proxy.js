@@ -1,67 +1,75 @@
-const express = require("express");
-const fetch = require("node-fetch");
-const cors = require("cors");
-require("dotenv").config();
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import fetch from 'node-fetch';
+import { config } from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 10000;
-const DROPBOX_TOKEN = process.env.DROPBOX_TOKEN;
-const DROPBOX_FOLDER = process.env.DROPBOX_FOLDER || "";
 
+// Cho phép CORS
 app.use(cors());
 
-app.get("/list-ifc", async (req, res) => {
+// __dirname với ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Trả về tên file IFC mới nhất
+app.get('/latest-ifc', async (req, res) => {
   try {
-    const response = await fetch("https://api.dropboxapi.com/2/files/list_folder", {
-      method: "POST",
+    const response = await fetch(`https://api.dropboxapi.com/2/files/list_folder`, {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${DROPBOX_TOKEN}`,
-        "Content-Type": "application/json",
+        'Authorization': `Bearer ${process.env.DROPBOX_TOKEN}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        path: DROPBOX_FOLDER,
+        path: '/Apps/IFCEXPORT',
       }),
     });
 
     const data = await response.json();
-    const files = data.entries
-      .filter(entry => entry[".tag"] === "file" && entry.name.endsWith(".ifc"))
-      .map(entry => entry.name)
-      .sort()
-      .reverse();
 
-    res.json(files);
-  } catch (err) {
-    console.error("Lỗi khi lấy danh sách file:", err);
-    res.status(500).send("Lỗi khi lấy danh sách file");
+    const ifcFiles = data.entries
+      .filter(f => f.name.endsWith('.ifc'))
+      .sort((a, b) => b.client_modified.localeCompare(a.client_modified));
+
+    if (ifcFiles.length === 0) return res.status(404).send("Không có file IFC nào");
+
+    return res.send(ifcFiles[0].name);
+  } catch (e) {
+    console.error('❌ Lỗi khi lấy file mới nhất:', e);
+    res.status(500).send('Lỗi server');
   }
 });
 
-app.get("/download-ifc", async (req, res) => {
+// Trả file IFC theo tên
+app.get('/download-ifc', async (req, res) => {
   const fileName = req.query.file;
   if (!fileName) return res.status(400).send("Thiếu tên file");
 
   try {
-    const response = await fetch("https://content.dropboxapi.com/2/files/download", {
-      method: "POST",
+    const response = await fetch(`https://content.dropboxapi.com/2/files/download`, {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${DROPBOX_TOKEN}`,
-        "Dropbox-API-Arg": JSON.stringify({
-          path: `${DROPBOX_FOLDER}/${fileName}`,
+        'Authorization': `Bearer ${process.env.DROPBOX_TOKEN}`,
+        'Dropbox-API-Arg': JSON.stringify({
+          path: `/Apps/IFCEXPORT/${fileName}`,
         }),
       },
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text);
-    }
+    if (!response.ok) return res.status(500).send("Tải file thất bại");
 
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     response.body.pipe(res);
-  } catch (err) {
-    console.error("Lỗi khi tải file:", err);
-    res.status(500).send("Lỗi khi tải file");
+  } catch (e) {
+    console.error('❌ Lỗi khi tải file:', e);
+    res.status(500).send('Lỗi server');
   }
 });
 
