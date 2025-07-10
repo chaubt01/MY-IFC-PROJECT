@@ -44,18 +44,19 @@ app.get('/download-ifc', async (req, res) => {
 
   try {
     const response = await fetch('https://content.dropboxapi.com/2/files/download', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DROPBOX_TOKEN}`,
-        'Dropbox-API-Arg': JSON.stringify({ path: `${DROPBOX_FOLDER}/${file}` }),
-      },
-    });
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${DROPBOX_TOKEN}`,
+    'Dropbox-API-Arg': JSON.stringify({ path: `${DROPBOX_FOLDER}/${file}` }),
+  },
+});
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Dropbox Error:", errorText);
-      return res.status(500).send('Error downloading file from Dropbox');
-    }
+if (!response.ok) {
+  const error = await response.text();
+  console.error("❌ Dropbox lỗi:", error);
+  return res.status(500).send("Error downloading file from Dropbox");
+}
+
 
     const buffer = await response.arrayBuffer();
     res.setHeader('Content-Type', 'application/octet-stream');
