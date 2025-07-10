@@ -68,3 +68,31 @@ if (!response.ok) {
 });
 
 app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
+// Thêm vào dưới cùng file proxy.js
+
+app.get("/list-ifc", async (req, res) => {
+  try {
+    const result = await axios.post(
+      "https://api.dropboxapi.com/2/files/list_folder",
+      {
+        path: "/Apps/IFCEXPORT", // hoặc "" nếu file nằm ngoài
+        recursive: false
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${DROPBOX_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    const ifcFiles = result.data.entries
+      .filter(e => e[".tag"] === "file" && e.name.endsWith(".ifc"))
+      .map(e => e.name);
+
+    res.json(ifcFiles); // trả danh sách tên file
+  } catch (err) {
+    console.error("❌ Lỗi lấy danh sách file:", err.message);
+    res.status(500).send("Error getting IFC list");
+  }
+});
