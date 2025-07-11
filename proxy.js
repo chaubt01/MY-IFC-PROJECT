@@ -8,11 +8,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DROPBOX_TOKEN = process.env.DROPBOX_TOKEN;
-const DROPBOX_FOLDER = '/Apps/IFCEXPORT'; // Đường dẫn thư mục Dropbox chứa file IFC
+const DROPBOX_FOLDER = '/Apps/IFCEXPORT'; // Thư mục chứa file IFC trong Dropbox
 
 app.use(cors());
 
-// 1. Trả về tên file IFC mới nhất
+// 1. API trả về tên file IFC mới nhất
 app.get('/latest-ifc', async (req, res) => {
   try {
     const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
@@ -29,7 +29,6 @@ app.get('/latest-ifc', async (req, res) => {
 
     const data = await response.json();
     const files = data.entries.filter(e => e.name.endsWith('.ifc'));
-
     if (!files.length) return res.status(404).send('No IFC files found');
 
     const latest = files.sort((a, b) => new Date(b.client_modified) - new Date(a.client_modified))[0];
@@ -40,7 +39,7 @@ app.get('/latest-ifc', async (req, res) => {
   }
 });
 
-// 2. Trả về nội dung file IFC (buffer)
+// 2. API tải file IFC theo tên
 app.get('/download-ifc', async (req, res) => {
   const { file } = req.query;
   if (!file) return res.status(400).send('Missing file name');
@@ -69,7 +68,7 @@ app.get('/download-ifc', async (req, res) => {
   }
 });
 
-// 3. Trả về danh sách tất cả file IFC
+// 3. API trả về danh sách tất cả file IFC
 app.get('/list-ifc', async (req, res) => {
   try {
     const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
@@ -86,12 +85,17 @@ app.get('/list-ifc', async (req, res) => {
 
     const data = await response.json();
     const ifcFiles = data.entries
-      .filter(e => e[".tag"] === "file" && e.name.endsWith(".ifc"))
+      .filter(e => e[".tag"] === "file" && e.name.endsWith('.ifc'))
       .map(e => e.name);
 
-    res.json(ifcFiles); // ✅ Trả đúng kiểu JSON
+    res.json(ifcFiles);
   } catch (err) {
     console.error("❌ Lỗi lấy danh sách file:", err.message);
-    res.status(500).json({ error: "Error getting IFC list" }); // ✅ Trả lỗi cũng là JSON
+    res.status(500).send("Error getting IFC list");
   }
+});
+
+// 4. Khởi động server — PHẢI có để Render không kill app
+app.listen(PORT, () => {
+  console.log(`🚀 Proxy server đang chạy tại http://localhost:${PORT}`);
 });
