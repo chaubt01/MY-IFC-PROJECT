@@ -38,6 +38,32 @@ app.get('/latest-ifc', async (req, res) => {
   }
 });
 
+app.get('/list-ifc', async (req, res) => {
+  try {
+    const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${DROPBOX_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        path: DROPBOX_FOLDER,
+        recursive: false,
+      }),
+    });
+
+    const data = await response.json();
+    const files = data.entries
+      .filter(e => e.name.endsWith('.ifc'))
+      .map(e => e.name);
+
+    res.json(files); // ✅ frontend sẽ nhận đúng JSON mảng tên file
+  } catch (err) {
+    console.error('❌ Lỗi khi lấy danh sách file:', err);
+    res.status(500).send('Error listing IFC files');
+  }
+});
+
 app.get('/download-ifc', async (req, res) => {
   const { file } = req.query;
   if (!file) return res.status(400).send('Missing file');
