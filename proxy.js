@@ -89,14 +89,9 @@ app.get('/list-ifc', async (req, res) => {
       .filter(e => e[".tag"] === "file" && e.name.endsWith(".ifc"))
       .map(e => e.name);
 
-    res.json(ifcFiles);
+    res.json(ifcFiles); // ✅ Trả đúng kiểu JSON
   } catch (err) {
     console.error("❌ Lỗi lấy danh sách file:", err.message);
-    res.status(500).send("Error getting IFC list");
+    res.status(500).json({ error: "Error getting IFC list" }); // ✅ Trả lỗi cũng là JSON
   }
-});
-
-// 4. Khởi động server
-app.listen(PORT, () => {
-  console.log(`🚀 Proxy server đang chạy tại http://localhost:${PORT}`);
 });
