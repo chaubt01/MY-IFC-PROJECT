@@ -10,9 +10,10 @@ const app = express();
 app.use(cors({ origin: "*" }));
 
 // 🔑 Cấu hình Nextcloud public folder
-const SHARE_TOKEN = "yiaztqQzYbTkecz"; // token trong URL: /s/yiaztqQzYbTkecz
-const PASSWORD = "180523bimtech";      // mật khẩu chia sẻ thư mục
-const WEBDAV_URL = `https://bimtechcloud.ddns.net/public.php/webdav/`;
+cconst shareToken = "yiaztqQzYbTkecz";
+const WEBDAV_URL = `https://bimtechcloud.ddns.net/public.php/webdav/`; // gốc
+const PASSWORD = "180523bimtech";
+const AUTH_HEADER = "Basic " + Buffer.from(shareToken + ":" + PASSWORD).toString("base64");
 
 // ✅ Tạo header xác thực basic auth với mật khẩu
 const AUTH_HEADER = "Basic " + Buffer.from(":" + PASSWORD).toString("base64");
