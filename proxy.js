@@ -71,3 +71,21 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
   console.log(`✅ Proxy đang chạy tại http://localhost:${PORT}`)
 );
+app.get("/list-ifc", async (req, res) => {
+  try {
+    const props = await fetch(WEBDAV_URL, {
+      method: "PROPFIND",
+      headers: { Authorization: AUTH_HEADER, Depth: "1" }
+    });
+    const xml = await props.text();
+
+    console.log("🧾 XML PROPFIND response:\n", xml); // Log XML
+
+    const files = [...xml.matchAll(/<d:href>.*?([^\/]+\.ifc)<\/d:href>/gi)]
+      .map(m => decodeURIComponent(m[1]));
+    res.json({ files });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Không lấy được danh sách IFC" });
+  }
+});
