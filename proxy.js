@@ -1,87 +1,88 @@
-// proxy.js
-import express from 'express';
-import fetch from 'node-fetch';
-import dotenv from 'dotenv';
-import cors from 'cors';
+import * as OBC from "@thatopen/components";
 
-dotenv.config();
+const PROXY_URL = "https://ifc-proxy.vercel.app"; // Thay bằng URL proxy của bạn
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const DROPBOX_TOKEN = process.env.DROPBOX_TOKEN;
-const DROPBOX_FOLDER = process.env.DROPBOX_FOLDER || ''; // Ví dụ: '' hoặc '/IFCEXPORT'
+const container = document.getElementById("container");
 
-app.use(cors());
+// Khởi tạo components
+const components = new OBC.Components();
+const worlds = components.get(OBC.Worlds);
+const world = worlds.create(OBC.SimpleScene, OBC.SimpleCamera, OBC.SimpleRenderer);
+world.scene = new OBC.SimpleScene(components);
+world.renderer = new OBC.SimpleRenderer(components, container);
+world.camera = new OBC.SimpleCamera(components);
 
-// 🔁 Lấy danh sách tất cả file IFC
-app.get('/list-ifc', async (req, res) => {
+components.init();
+world.scene.setup();
+world.camera.controls.setLookAt(10, 10, 10, 0, 0, 0);
+world.scene.three.background = null;
+
+// IFC loader
+const fragments = components.get(OBC.FragmentsManager);
+const fragmentIfcLoader = components.get(OBC.IfcLoader);
+await fragmentIfcLoader.setup();
+fragmentIfcLoader.settings.webIfc.COORDINATE_TO_ORIGIN = true;
+
+// Lấy danh sách file IFC
+async function fetchAllFileNames() {
   try {
-    const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DROPBOX_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        path: DROPBOX_FOLDER,
-        recursive: false,
-      }),
-    });
-
+    const response = await fetch(`${PROXY_URL}/list-ifc`);
+    if (!response.ok) throw new Error("Không thể lấy danh sách file");
     const data = await response.json();
-    console.log("📦 Dropbox trả về:", JSON.stringify(data, null, 2));
-
-    if (!data.entries) {
-      return res.status(500).json({
-        error: 'Dropbox API không trả về danh sách file. Kiểm tra token hoặc đường dẫn.',
-        raw: data,
-      });
-    }
-
-    const files = data.entries
-      .filter(e => e.name.endsWith('.ifc'))
-      .map(e => e.name);
-
-    if (!files.length) {
-      return res.status(404).json({ error: 'Không có file IFC nào trong thư mục Dropbox.' });
-    }
-
-    res.json(files);
+    return data.files || [];
   } catch (err) {
-    console.error('❌ Lỗi khi lấy danh sách file:', err);
-    res.status(500).json({ error: 'Lỗi server khi gọi Dropbox.' });
+    console.error("❌ Lỗi khi lấy danh sách file:", err);
+    return [];
   }
-});
+}
 
-// 🔁 Lấy file IFC cụ thể
-app.get('/download-ifc', async (req, res) => {
-  const { file } = req.query;
-  if (!file) return res.status(400).send('Thiếu tên file');
-
+// Tải và hiển thị file IFC
+async function loadIFC(fileName) {
   try {
-    const response = await fetch('https://content.dropboxapi.com/2/files/download', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${DROPBOX_TOKEN}`,
-        'Dropbox-API-Arg': JSON.stringify({ path: `${DROPBOX_FOLDER}/${file}` }),
-      },
-    });
+    const start = performance.now();
+    console.log(`📂 Đang tải file: ${fileName}`);
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error("❌ Lỗi Dropbox khi tải file:", error);
-      return res.status(500).send("Không thể tải file từ Dropbox");
-    }
+    const fileRes = await fetch(`${PROXY_URL}/download-ifc?file=${encodeURIComponent(fileName)}`);
+    if (!fileRes.ok) throw new Error(`Không thể tải file ${fileName}`);
 
-    const buffer = await response.arrayBuffer();
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.send(Buffer.from(buffer));
+    const buffer = await fileRes.arrayBuffer();
+    const model = await fragmentIfcLoader.load(new Uint8Array(buffer));
+    model.name = fileName;
+
+    // Xóa các mô hình cũ
+    world.scene.three.children
+      .filter(child => child !== world.scene.three)
+      .forEach(child => world.scene.three.remove(child));
+
+    world.scene.three.add(model);
+    world.camera.controls.fitToSphere();
+
+    const end = performance.now();
+    console.log(`✅ Đã tải file ${fileName} trong ${(end - start).toFixed(2)} ms`);
   } catch (err) {
-    console.error('❌ Lỗi khi tải file:', err);
-    res.status(500).send('Lỗi server nội bộ');
+    console.error(`❌ Lỗi khi tải file ${fileName}:`, err);
+    alert(`Lỗi khi tải file ${fileName}: ${err.message}`);
   }
-});
+}
 
-app.listen(PORT, () => {
-  console.log(`🚀 Proxy server đang chạy tại http://localhost:${PORT}`);
-});
+// Cập nhật danh sách file
+async function updateFileList() {
+  try {
+    const files = await fetchAllFileNames();
+    const fileList = document.getElementById("file-list");
+    fileList.innerHTML = '<h3>Danh sách file IFC</h3><ul>' +
+      files.map(file => `<li onclick="loadIFC('${file}')">${file}</li>`).join("") +
+      "</ul>";
+  } catch (err) {
+    console.error("❌ Lỗi khi cập nhật danh sách file:", err);
+  }
+}
+
+// Kiểm tra query parameter để tải file
+const urlParams = new URLSearchParams(window.location.search);
+const fileToLoad = urlParams.get("file");
+if (fileToLoad) {
+  loadIFC(fileToLoad);
+} else {
+  updateFileList();
+}
