@@ -1,88 +1,26 @@
-import * as OBC from "@thatopen/components";
+import express from "express";
+import cors from "cors";
+import fs from "fs";
+import path from "path";
 
-const PROXY_URL = "https://ifc-proxy.vercel.app"; // Thay bằng URL proxy của bạn
+const app = express();
+app.use(cors());
 
-const container = document.getElementById("container");
+const IFC_DIR = path.resolve("public/ifc");
 
-// Khởi tạo components
-const components = new OBC.Components();
-const worlds = components.get(OBC.Worlds);
-const world = worlds.create(OBC.SimpleScene, OBC.SimpleCamera, OBC.SimpleRenderer);
-world.scene = new OBC.SimpleScene(components);
-world.renderer = new OBC.SimpleRenderer(components, container);
-world.camera = new OBC.SimpleCamera(components);
+app.get("/list-ifc", (req, res) => {
+  fs.readdir(IFC_DIR, (err, files) => {
+    if (err) return res.status(500).json({ error: "Không đọc được thư mục" });
+    res.json({ files: files.filter(f => f.endsWith(".ifc")) });
+  });
+});
 
-components.init();
-world.scene.setup();
-world.camera.controls.setLookAt(10, 10, 10, 0, 0, 0);
-world.scene.three.background = null;
+app.get("/download-ifc", (req, res) => {
+  const file = req.query.file;
+  const filePath = path.join(IFC_DIR, file);
+  if (!fs.existsSync(filePath)) return res.status(404).send("Không tìm thấy file");
+  res.sendFile(filePath);
+});
 
-// IFC loader
-const fragments = components.get(OBC.FragmentsManager);
-const fragmentIfcLoader = components.get(OBC.IfcLoader);
-await fragmentIfcLoader.setup();
-fragmentIfcLoader.settings.webIfc.COORDINATE_TO_ORIGIN = true;
-
-// Lấy danh sách file IFC
-async function fetchAllFileNames() {
-  try {
-    const response = await fetch(`${PROXY_URL}/list-ifc`);
-    if (!response.ok) throw new Error("Không thể lấy danh sách file");
-    const data = await response.json();
-    return data.files || [];
-  } catch (err) {
-    console.error("❌ Lỗi khi lấy danh sách file:", err);
-    return [];
-  }
-}
-
-// Tải và hiển thị file IFC
-async function loadIFC(fileName) {
-  try {
-    const start = performance.now();
-    console.log(`📂 Đang tải file: ${fileName}`);
-
-    const fileRes = await fetch(`${PROXY_URL}/download-ifc?file=${encodeURIComponent(fileName)}`);
-    if (!fileRes.ok) throw new Error(`Không thể tải file ${fileName}`);
-
-    const buffer = await fileRes.arrayBuffer();
-    const model = await fragmentIfcLoader.load(new Uint8Array(buffer));
-    model.name = fileName;
-
-    // Xóa các mô hình cũ
-    world.scene.three.children
-      .filter(child => child !== world.scene.three)
-      .forEach(child => world.scene.three.remove(child));
-
-    world.scene.three.add(model);
-    world.camera.controls.fitToSphere();
-
-    const end = performance.now();
-    console.log(`✅ Đã tải file ${fileName} trong ${(end - start).toFixed(2)} ms`);
-  } catch (err) {
-    console.error(`❌ Lỗi khi tải file ${fileName}:`, err);
-    alert(`Lỗi khi tải file ${fileName}: ${err.message}`);
-  }
-}
-
-// Cập nhật danh sách file
-async function updateFileList() {
-  try {
-    const files = await fetchAllFileNames();
-    const fileList = document.getElementById("file-list");
-    fileList.innerHTML = '<h3>Danh sách file IFC</h3><ul>' +
-      files.map(file => `<li onclick="loadIFC('${file}')">${file}</li>`).join("") +
-      "</ul>";
-  } catch (err) {
-    console.error("❌ Lỗi khi cập nhật danh sách file:", err);
-  }
-}
-
-// Kiểm tra query parameter để tải file
-const urlParams = new URLSearchParams(window.location.search);
-const fileToLoad = urlParams.get("file");
-if (fileToLoad) {
-  loadIFC(fileToLoad);
-} else {
-  updateFileList();
-}
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Proxy server tại http://localhost:${PORT}`));
