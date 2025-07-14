@@ -1,54 +1,49 @@
-// proxy.js
-
 import express from "express";
 import cors from "cors";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-// 👇 Đảm bảo __dirname dùng được khi xài ES Module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import fetch from "node-fetch";
+import { Buffer } from "buffer";
 
 const app = express();
-
-// ✅ Bật CORS cho tất cả origin
 app.use(cors({ origin: "*" }));
 
-// ✅ Đảm bảo thư mục chứa file IFC tồn tại
-const IFC_DIR = path.join(__dirname, "public", "ifc");
+const WEBDAV_URL = "https://bimtechcloud.ddns.net/public.php/webdav/";
+const PASSWORD = "180523bimtech";
+const AUTH_HEADER = "Basic " + Buffer.from(":" + PASSWORD).toString("base64");
 
-// API: Lấy danh sách file IFC
-app.get("/list-ifc", (req, res) => {
-  fs.readdir(IFC_DIR, (err, files) => {
-    if (err) {
-      console.error("❌ Không đọc được thư mục IFC:", err);
-      return res.status(500).json({ error: "Không đọc được thư mục IFC" });
-    }
-
-    const ifcFiles = files.filter(file => file.endsWith(".ifc"));
-    res.json({ files: ifcFiles });
-  });
+// List file IFC
+app.get("/list-ifc", async (req, res) => {
+  try {
+    const props = await fetch(WEBDAV_URL, {
+      method: "PROPFIND",
+      headers: { Authorization: AUTH_HEADER, Depth: "1" }
+    });
+    const xml = await props.text();
+    const files = [...xml.matchAll(/<d:href>.*?([^\/]+\.ifc)<\/d:href>/g)].map(m => decodeURIComponent(m[1]));
+    res.json({ files });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Không lấy được danh sách IFC" });
+  }
 });
 
-// API: Tải file IFC
-app.get("/download-ifc", (req, res) => {
+// Download IFC
+app.get("/download-ifc", async (req, res) => {
   const file = req.query.file;
-  if (!file || typeof file !== "string") {
-    return res.status(400).send("Thiếu tên file");
-  }
+  if (!file) return res.status(400).send("Thiếu tên file");
 
-  const filePath = path.join(IFC_DIR, file);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send("Không tìm thấy file");
+  const url = WEBDAV_URL + encodeURIComponent(file);
+  try {
+    const fw = await fetch(url, { headers: { Authorization: AUTH_HEADER } });
+    if (!fw.ok) throw new Error("Không tải được file");
+    res.setHeader("Content-Type", "application/octet-stream");
+    fw.body.pipe(res);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Lỗi tải IFC");
   }
-
-  res.sendFile(filePath);
 });
 
-// Khởi chạy server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Proxy server đang chạy tại PORT ${PORT}`);
-  console.log(`🌍 Render URL: https://my-ifc-project.onrender.com`);
+  console.log(`✅ Proxy chạy tại port ${PORT}`);
 });
